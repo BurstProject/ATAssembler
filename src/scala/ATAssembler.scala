@@ -13,6 +13,8 @@ object ATAssembler {
   
   val whitespace = "^\\s*$".r
   val label = "(\\w+):".r
+  val comment = "\\^comment.*".r
+  val allocate = "\\^allocate\\s+(\\w+)\\s+(\\d+)".r
   val set_val = "SET\\s+@(\\w+)\\s+#([\\da-f]+)".r
   val set_dat = "SET\\s+@(\\w+)\\s+\\$(\\w+)".r
   val clr_dat = "CLR\\s+@(\\w+)".r
@@ -155,6 +157,11 @@ object ATAssembler {
             println("Duplicate label: " + name)
           }
           labels.put(name, outBytes.position())
+        }
+        case comment() =>
+        case allocate(name, size) => {
+          variables += name -> variableCount;
+          variableCount += size.toInt;
         }
         case set_val(dst, src) => {
           outBytes.put(0x01.asInstanceOf[Byte])
@@ -435,14 +442,14 @@ object ATAssembler {
           fills.add(new LabelByteFill(outBytes.position, dst, -9))
           outBytes.put(0.asInstanceOf[Byte])
         }
-        case fiz_dat(loc) => {
-          outBytes.put(0x26.asInstanceOf[Byte])
+        case slp_dat(loc) => {
+          outBytes.put(0x25.asInstanceOf[Byte])
           fills.add(new VariableFill(outBytes.position, loc))
           variables.getOrElseUpdate(loc, {variableCount += 1; variableCount - 1})
           outBytes.putInt(0)
         }
-        case slp_dat(loc) => {
-          outBytes.put(0x27.asInstanceOf[Byte])
+        case fiz_dat(loc) => {
+          outBytes.put(0x26.asInstanceOf[Byte])
           fills.add(new VariableFill(outBytes.position, loc))
           variables.getOrElseUpdate(loc, {variableCount += 1; variableCount - 1})
           outBytes.putInt(0)
@@ -531,7 +538,13 @@ object ATAssembler {
     outBytes.flip()
     
     fills.toArray() foreach (_ match {
-      case f: LabelByteFill => outBytes.put(f.loc, (labels(f.label) - f.loc - f.offset).asInstanceOf[Byte])
+      case f: LabelByteFill => {
+        if((labels(f.label) - f.loc - f.offset) > 127
+            || (labels(f.label) - f.loc - f.offset) < -128) {
+          println("attempting to branch too far to " + f.label);
+        }
+        outBytes.put(f.loc, (labels(f.label) - f.loc - f.offset).asInstanceOf[Byte])
+      }
       case f: LabelIntFill => outBytes.putInt(f.loc, labels(f.label))
       case f: VariableFill => outBytes.putInt(f.loc, variables(f.name))
     })
