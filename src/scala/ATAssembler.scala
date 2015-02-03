@@ -14,6 +14,7 @@ object ATAssembler {
   val whitespace = "^\\s*$".r
   val label = "(\\w+):".r
   val comment = "\\^comment.*".r
+  val declare = "\\^declare\\s+(\\w+)".r
   val allocate = "\\^allocate\\s+(\\w+)\\s+(\\d+)".r
   val set_val = "SET\\s+@(\\w+)\\s+#([\\da-f]+)".r
   val set_dat = "SET\\s+@(\\w+)\\s+\\$(\\w+)".r
@@ -159,9 +160,16 @@ object ATAssembler {
           labels.put(name, outBytes.position())
         }
         case comment() =>
+        case declare(name) => {
+          variables += name -> variableCount;
+          variableCount += 1;
+        }
         case allocate(name, size) => {
           variables += name -> variableCount;
-          variableCount += size.toInt;
+          outBytes.put(0x01.asInstanceOf[Byte])
+          outBytes.putInt(variableCount)
+          outBytes.putLong(variableCount + 1)
+          variableCount += size.toInt + 1;
         }
         case set_val(dst, src) => {
           outBytes.put(0x01.asInstanceOf[Byte])
@@ -468,7 +476,7 @@ object ATAssembler {
         }
         case err_adr(loc) => {
           outBytes.put(0x2B.asInstanceOf[Byte])
-          fills.add(new VariableFill(outBytes.position, loc))
+          fills.add(new LabelIntFill(outBytes.position, loc))
           variables.getOrElseUpdate(loc, {variableCount += 1; variableCount - 1})
           outBytes.putInt(0)
         }
